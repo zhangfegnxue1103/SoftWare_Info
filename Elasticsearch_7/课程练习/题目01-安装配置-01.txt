@@ -1,0 +1,112 @@
+# ** EXAM OBJECTIVE: INSTALLATION AND CONFIGURATION **
+考试目的：安装和配置
+# GOAL: Setup an Elasticsearch cluster that satisfies a given set
+#       of requirements
+目标：按照给出的要求，安装一个集群，
+# REQUIRED SETUP: 
+安装需求:
+# Download the exam version of Elasticsearch
+下载指定的考试版本
+# Deploy the cluster `eoc-01-cluster`, so that it satisfies the 
+#    following requirements:
+部署集群`eoc-01-cluster`，满足如下需求：
+#    (i)   has three nodes, named `node1`, `node2`, and `node3`,
+			集群拥有3节点，名称是 node1、node2、node3
+#    (ii)  all nodes are eligible master nodes
+			所有节点都是有效的主接待
+			
+cluster.name: eoc-01-cluster
+
+node.name: node1
+node.name: node2
+node.name: node3
+
+node.master: true 
+node.data: false 
+node.ingest: false 
+node.ml: false 
+cluster.remote.connect: false 
+
+https://www.elastic.co/guide/en/elasticsearch/reference/master/modules-node.html
+https://www.elastic.co/guide/en/elasticsearch/reference/master/modules-remote-clusters.html
+
+# Bind `node1` to the IP address “151.101.2.217” and port “9201”
+# Bind `node2` to the IP address “151.101.2.218” and port “9202”
+# Bind `node3` to the IP address “151.101.2.219” and port “9203”
+绑定节点到指定IP地址和端口
+# Configure the cluster discovery module of `node2` and `node3` so
+#    as to use `node1` as seed host
+配置集群发现功能， node1作为主节点
+
+http.host: 151.101.2.217
+http:port: 9201
+
+http.host: 151.101.2.218
+http:port: 9202
+
+http.host: 151.101.2.219
+http:port: 9203
+
+discovery.seed_hosts:["node1","node2","node3"]
+
+# Configure the nodes to avoid the split brain scenario
+配置master节点避免脑裂情况
+initial_master_nodes：["node1"]
+
+# Configure `node1` to be a data node but not an ingest node
+配置node1为数据节点
+node.master: false 
+node.data: true 
+node.ingest: false 
+node.ml: false 
+cluster.remote.connect: false 
+
+# Configure `node2` and `node3` to be both an ingest and data node
+配置node2、node3位ingest节点和data节点
+node.master: false 
+node.data: true 
+node.ingest: true 
+node.ml: false 
+cluster.remote.connect: false 
+
+
+# Configure `node1` to disallow swapping on its host
+node1 禁止使用swap交换分区
+sudo swapoff -a
+
+# Configure the JVM settings of each node so that it uses a minimum
+#    and maximum of 8 GB for the heap
+配置jvm使用内存量为8G
+-Xms8g
+-Xmx8g
+
+# Configure the logging settings of each node so that
+配置每一个节点的日志选项
+#    (i)  the logs directory is not the default one,
+		这个日志目录非默认
+#    (ii) the log level for transport-related events is "debug"
+		transport相关事件的级别是debug，调试级别
+path.logs: /path/to/logs
+PUT /_cluster/settings
+{
+  "transient": {
+    "logger.org.elasticsearch.transport": "debug"
+  }
+}
+https://www.elastic.co/guide/en/elasticsearch/reference/7.2/logging.html
+
+# Configure the nodes so as to disable the possibility to delete
+#    indices using wildcards
+配置节点禁止使用通配功能删除索引
+
+action.destructive_requires_name:true
+
+PUT /_cluster/settings
+{
+    "persistent" : {
+       "action.destructive_requires_name":true
+    }
+}
+
+
+https://www.elastic.co/guide/en/elasticsearch/reference/7.2/indices-delete-index.html

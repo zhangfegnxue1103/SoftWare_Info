@@ -1,0 +1,248 @@
+# ** EXAM OBJECTIVE: CLUSTER ADMINISTRATION **
+考试目的：集群管理
+# GOAL: Allocate the shards in a way that satisfies a given set of
+#       requirements
+目标：用一种方式分配分片，满足给出的需求
+# REQUIRED SETUP: 
+安装需求
+# Download the exam version of Elasticsearch
+# Deploy the cluster `eoc-06-cluster`, with three nodes named 
+#    `node1`, `node2`, and `node3`
+部署集群
+# Configure the Zen Discovery module of each node so that they can 
+#    communicate
+配置发现
+# Start the cluster
+启动集群
+
+# Create the index `hamlet-1` with two primary shards and one replica
+创建索引hamlet-1，2主分片1副本；
+PUT hamlet-1
+{
+  "settings": {
+    "index":{
+      "number_of_shards" : "2",
+      "number_of_replicas" : "1"
+    }
+  }
+}
+
+# Add some documents to `hamlet-1` by running the command below 
+使用bulk命令添加文档到索引hamlet-1中
+PUT hamlet-1/_doc/_bulk
+{"index":{"_index":"hamlet-1","_id":0}}  
+{"line_number":"1","speaker":"BERNARDO","text_entry":"Whos there?"}
+{"index":{"_index":"hamlet-1","_id":1}} 
+{"line_number":"2","speaker":"FRANCISCO","text_entry":"Nay, answer me: stand, and unfold yourself."}
+{"index":{"_index":"hamlet-1","_id":2}}
+{"line_number":"3","speaker":"BERNARDO","text_entry":"Long live the king!"}
+{"index":{"_index":"hamlet-1","_id":3}}
+{"line_number":"4","speaker":"FRANCISCO","text_entry":"Bernardo?"}
+{"index":{"_index":"hamlet-1","_id":4}}
+{"line_number":"5","speaker":"BERNARDO","text_entry":"He."}
+
+# Create the index `hamlet-2` with two primary shard and one replica
+创建索引hamlet-2，2主分片1副本；
+PUT hamlet-2
+{
+  "settings": {
+    "index":{
+      "number_of_shards" : "2",
+      "number_of_replicas" : "1"
+    }
+  }
+}
+# Add some documents to `hamlet-2` by running the command below
+使用bulk命令添加文档到索引hamlet-2中
+
+PUT hamlet-2/_doc/_bulk
+{"index":{"_index":"hamlet-2","_id":5}}
+{"line_number":"6","speaker":"FRANCISCO","text_entry":"You come most carefully upon your hour."}
+{"index":{"_index":"hamlet-2","_id":6}}
+{"line_number":"7","speaker":"BERNARDO","text_entry":"Tis now struck twelve; get thee to bed, Francisco."}
+{"index":{"_index":"hamlet-2","_id":7}}
+{"line_number":"8","speaker":"FRANCISCO","text_entry":"For this relief much thanks: tis bitter cold,"}
+{"index":{"_index":"hamlet-2","_id":8}}
+{"line_number":"9","speaker":"FRANCISCO","text_entry":"And I am sick at heart."}
+{"index":{"_index":"hamlet-2","_id":9}}
+{"line_number":"10","speaker":"BERNARDO","text_entry":"Have you had quiet guard?"}
+
+
+# Check that the replicas of indices `hamlet-1` and `hamlet-2` have been allocated 
+检查索引hamlet-1和hamlet-2的副本是否已经分配
+
+GET /_cat/allocation?v
+GET /_cluster/allocation/explain
+GET _cat/nodeattrs
+
+GET a_index/_settings
+DELETE a_index
+DELETE b_index
+
+GET _cat/shards
+
+# Check the distribution of primary shards and replicas of indices
+#    `hamlet-1` and `hamlet-2` across the nodes of the cluster
+检查索引hamlet-1和hamlet-2的主分片和副本在集群节点上的分布
+
+GET _cat/shards
+GET _cat/shards/ham*?v
+
+
+
+# Configure `hamlet-1` to allocate both primary shards to `node2`, 
+#    using the node name
+配置hamlet-1的主分片到node2节点上
+# Verify the success of the last action by using the _cat API
+使用_cat的API验证上一步操作
+GET hamlet-1/_settings
+DELETE hamlet-1
+PUT hamlet-1
+{
+  "settings": {
+    "index.routing.allocation.include._name": "node2"
+  }
+}
+GET _cat/shards
+https://www.elastic.co/guide/en/elasticsearch/reference/7.2/shard-allocation-filtering.html
+
+# Configure `hamlet-2` so that no primary shard is allocated to 
+#    `node3`
+配置hamlet-2的非主分片到node3节点上
+# Verify the success of the last action by using the _cat API
+使用_cat的API验证上一步操作
+DELETE hamlet-2
+PUT hamlet-2
+{
+  "settings": {
+    "index.routing.allocation.exclude._name": "node3"
+  }
+}
+GET _cat/shards
+https://www.elastic.co/guide/en/elasticsearch/reference/7.2/shard-allocation-filtering.html
+
+# Remove any allocation filter setting associated with `hamlet-1` 
+#    and `hamlet-2`
+移除在hamlet-1和hamlet-2上的allocation filter设定
+PUT hamlet-1/_settings
+{
+    "index.routing.allocation.include._name": null
+}
+GET  hamlet-1/_settings
+
+PUT hamlet-2/_settings
+{
+    "index.routing.allocation.exclude._name": null
+}
+GET hamlet-2/_settings
+
+https://www.elastic.co/guide/en/elasticsearch/reference/7.2/shard-allocation-filtering.html
+
+# Let's assume that we deployed the `eoc-06-cluster` cluster across
+#    two availability zones, named `earth` and `mars`. Add the
+#    attribute `AZ` to the nodes configuration, and set its value
+#    to "earth" for `node1` and `node2`, and to "mars" for `node3`
+部署集群eoc-06-cluster，跨越2个有效区域earth和mars；添加AZ属性到节点配置中
+# Restart the cluster
+重启集群
+# Configure the cluster to force shard allocation awareness based on 
+#    the two availability zones, and persist such configuration
+#    across cluster restarts
+配置集群以强制基于两个可用区来分配分片，并在集群重启后保持这种配置
+# Verify the success of the last action by using the _cat API
+使用_cat的API验证上一步操作
+
+##
+node.attr.rack_id: earth
+node.name=node1
+node.name=node2
+
+##
+node.attr.rack_id: mars
+node.name=node3
+
+cluster.routing.allocation.awareness.attributes: rack_id
+#enhance
+cluster.routing.allocation.awareness.force.zone.values: earth,mars 
+
+PUT /_cluster/settings
+{
+    "persistent" : {
+        "cluster.routing.allocation.awareness.attributes": "rack_id"
+    }
+}
+
+PUT /_cluster/settings
+{
+    "persistent" : {
+        "cluster.routing.allocation.awareness.attributes": null
+    }
+}
+https://www.elastic.co/guide/en/elasticsearch/reference/7.2/allocation-awareness.html
+
+
+# Configure the cluster to reflect a hot/warm architecture, with `node1` as the only hot node
+配置集群hot/warm架构，仅使用node1作为热节点
+# Configure the `hamlet-1` index to allocate its shards only to warm nodes
+配置索引hamlet-1的分片分配到warm节点
+# Verify the success of the last action by using the _cat API   
+使用_cat的API验证上一步操作
+
+##node-1
+node.attr.hot_warm_type: hot
+
+##node-2
+node.attr.hot_warm_type: warm
+
+DELETE hamlet-1
+PUT hamlet-1
+{
+  "settings": {
+    "index.routing.allocation.include.hot_warm_type": "warm"
+  }
+}
+
+GET _cat/shards
+https://www.elastic.co/guide/en/elasticsearch/reference/7.2/shard-allocation-filtering.html
+
+
+# Remove the hot/warm shard filtering configuration from the `hamlet-1` configuration
+从hamlet-1配置中移除hot/warm分片过滤配置
+
+PUT hamlet-1/_settings
+{
+    "index.routing.allocation.include.hot_warm_type": null
+}
+GET _cat/shards
+
+# Let's assume that the nodes have either a "large" or "small" local 
+#    storage. Add the attribute `storage` to the nodes config, and 
+#    set its value so that `node2` is the only with a "small"
+#    storage
+假设节点具有或大或小的本地存储，添加参数storage到节点配置中，仅将node2节点的
+这个值设置为small存储参数
+
+##node-1
+node.attr.storage: large
+
+##node-2
+node.attr.storage: small
+
+GET _cat/shards
+
+# Configure the `hamlet-2` index to allocate its shards only to nodes with a large storage size
+配置hamlet-2索引的主分片分配到节点存储参数为large的存储节点上
+# Verify the success of the last action by using the _cat API
+使用_cat的API验证上一步操作
+
+PUT hamlet-2
+{
+  "settings": {
+    "index.routing.allocation.include.storage": "large"
+  }
+}
+
+GET _cluster/allocation/explain
+
+GET _cat/shards
+GET _cat/nodeattrs?v

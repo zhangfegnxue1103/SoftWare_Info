@@ -1,0 +1,155 @@
+DELETE hamlet-*
+GET _alias
+DELETE _template/hamlet_*
+#清理环境
+
+# 001 Create the index `hamlet_1` with one primary shard and no replicas
+# Define a mapping for the default type "_doc" of `hamlet_1`, so 
+#    that 
+#  (i) the type has three fields, named `speaker`,`line_number`, and `text_entry`, 
+#  (ii) `speaker` and `line_number` are unanalysed strings
+# 创建索引hamlet_1，1主分片，无副本，
+# 定义hamlet_1的mapping默认类型doc，需求如下：
+#  包括3个字段speaker、line_number、text_entry
+#  speaker、line_number不具备聚合分析功能
+
+DELETE hamlet_1
+PUT hamlet_1
+{
+  "settings": {
+    "number_of_replicas": 0,
+    "number_of_shards": 1
+  }, 
+  "mappings": {
+    "properties": { 
+    "speaker":{
+      "type":"text"
+    },
+    "line_number":{
+      "type":"keyword"
+    },
+    "text_entry":{
+      "type":"keyword"
+    }
+  }
+  }
+}
+
+# Furthermore, I want you to disable aggregations on the “line_number” field, 
+# as I couldn’t think of any valuable statistic that we could get out of unique, 
+# progressive line numbers. 
+
+#Note: that by disabling aggregations, you are going to save some resources.
+# Update the mapping of `hamlet_1` by disabling aggregations on `line_number`
+# 禁用“line_number”字段的聚合分析功能
+# 
+
+GET /hamlet_1/_mapping
+PUT /hamlet_1/_mapping
+{
+  "properties": {
+    "line_number": {
+      "type": "keyword",
+      "doc_values": false
+    }
+  }
+}
+
+DELETE hamlet_1
+PUT hamlet_1
+{
+  "settings": {
+    "number_of_replicas": 1,
+    "number_of_shards": 1
+  },
+  "mappings": {
+    "properties": {
+      "speaker": {
+        "type": "text"
+      },
+      "line_number": {
+         "type": "text"
+      },
+      "text_entry": {
+        "type": "keyword"
+      }
+    }
+  }
+	}
+  
+
+# 003 Add some documents to `hamlet_1` by running the following _bulk 
+#    command
+# 使用bulk命令添加文档到hamlet_1索引中
+
+PUT hamlet_1/_doc/_bulk
+{"index":{"_index":"hamlet_1","_id":0}}
+{"line_number":"1.1.1","speaker":"BERNARDO","text_entry":"Whos there?"}
+{"index":{"_index":"hamlet_1","_id":1}}
+{"line_number":"1.1.2","speaker":"FRANCISCO","text_entry":"Nay, answer me: stand, and unfold yourself."}
+{"index":{"_index":"hamlet_1","_id":2}}
+{"line_number":"1.1.3","speaker":"BERNARDO","text_entry":"Long live the king!"}
+{"index":{"_index":"hamlet_1","_id":3}}
+{"line_number":"1.2.1","speaker":"KING CLAUDIUS","text_entry":"Though yet of Hamlet     our dear brothers death"}
+{"index":{"_index":"hamlet_1","_id":4}}
+{"line_number":"1.2.2","speaker":"KING CLAUDIUS","text_entry":"The memory be green,    and that it us befitted"}
+
+
+
+# Create the index `hamlet_2` with one primary shard and no replicas 
+# Copy the mapping of `hamlet_1` into `hamlet_2`, but also define a 
+#    multi-field for `speaker`. The name of such multi-field is 
+#    `tokens` and its data type is the (default) analysed string
+# Reindex `hamlet_1` to `hamlet_2`
+# Verify that full-text queries on "speaker.tokens" are enabled on 
+#    `hamlet_2` by running the following command:
+#创建索引hamlet_2，1主分片，0副本
+#复制hamlet_1的mapping到hamlet_2中，为speaker定义一个多字段，字段名称是tokens，
+#并且数据类型是默认的分析功能字符串
+#在speaker.tokens上验证全文本请求，在hamlet_2上启用，运行如下命令
+
+
+PUT hamlet_2
+{
+  "settings": {
+    "number_of_replicas": 0,
+    "number_of_shards": 1
+  },
+  "mappings": {
+    "properties": {
+      "speaker": {
+        "type": "text",
+        "fields": {
+          "tokens": {
+            "type": "text"
+          }
+        }
+      },
+      "line_number": {
+        "type": "keyword",
+        "doc_values": false
+      },
+      "text_entry": {
+        "type": "keyword"
+      }
+    }
+  }
+}
+
+GET hamlet_2/_mapping
+
+POST _reindex
+{
+  "source": {
+    "index":"hamlet_1"
+  },
+  "dest": {
+    "index":"hamlet_2"
+  }
+}
+
+GET hamlet_2/_search 
+{
+  "query": {
+    "match": { "speaker.tokens": "hamlet" }
+}}
