@@ -1,0 +1,195 @@
+# ** EXAM OBJECTIVE: MAPPINGS AND TEXT ANALYSIS **
+#考试目标：地图和文字分析
+# GOAL: Model relational data
+#目标：模型关系数据
+# REQUIRED SETUP:
+# 必须设置：
+#    (i)   a running Elasticsearch cluster with at least one node 
+#          and a Kibana instance,
+#			至少运行一个节点的es集群和kibana实例
+#    (ii)  the cluster has no index with name `hamlet`,
+#			集群上没有hamlet索引 
+#    (iii) the cluster has no template that applies to indices 
+#          starting by `hamlet
+#			集群上没有模板应用到索引hamlet上
+
+
+DELETE hamlet_*
+DELETE _template/hamlet_*
+
+# 001 Create the index `hamlet_1` with one primary shard and no replicas
+# Add some documents to `hamlet_1` by running the following command 
+# 创建索引hamlet_1，1主分片和0副本
+# 添加一些文档到hamlet_1中，通过运行命令bulk实现PUT hamlet_1/_doc/_bulk
+文档内容如下：
+{"index":{"_index":"hamlet_1","_id":"C0"}}
+{"name":"HAMLET","relationship":[{"name":"HORATIO","type":"friend"},{"name":"GERTRUDE","type":"mother"}]}
+{"index":{"_index":"hamlet_1","_id":"C1"}}
+{"name":"KING CLAUDIUS","relationship":[{"name":"HAMLET","type":"nephew"}]}
+
+PUT hamlet_1
+{
+  "settings": {
+    "number_of_replicas": 0,
+    "number_of_shards": 1
+  }
+}
+
+PUT hamlet_1/_doc/_bulk
+{"index":{"_index":"hamlet_1","_id":"C0"}}
+{"name":"HAMLET","relationship":[{"name":"HORATIO","type":"friend"},{"name":"GERTRUDE","type":"mother"}]}
+{"index":{"_index":"hamlet_1","_id":"C1"}}
+{"name":"KING CLAUDIUS","relationship":[{"name":"HAMLET","type":"nephew"}]}
+
+# Verify that the items of the `relationship` array cannot be searched independently 
+# 验证 relationship数组中的标签不能被独立搜索
+# - e.g., searching for a friend named Gertrude will return 1 hit
+# 例如：搜索一个朋友名字Gertrude将返回1命中
+
+GET hamlet_1/_search
+{
+  "query": {
+    "bool": {
+      "must": [
+        { "match": { "relationship.name": "gertrude" } },
+        { "match": { "relationship.type": "friend" } }
+      ]
+}}}
+
+
+# Create the index `hamlet_2` with one primary shard and no replicas
+# Define a mapping for the default type "_doc" of `hamlet_2`, 
+#    so that the inner objects of the `relationship` field  
+#    (i) can be searched independently,  
+#    (ii) have only unanalyzed fields
+# Reindex `hamlet_1` to `hamlet_2`
+# Verify that the items of the `relationship` array can now be searched independently - e.g., 
+# searching for a friend named Gertrude will return no hits
+# 创建索引hamlet_2，1主分片和0副本
+# 定义一个mapping，默认类型是doc，
+#relationship字段的内部对象：能够独立搜索，仅有的未分析字段
+#重建索引hamlet_1到hamlet_2
+#验证relationship数组的标签能够被独立搜索到
+#例如：搜索一个朋友名字Gertrude将返回未命中
+
+
+DELETE hamlet_2
+PUT hamlet_2
+{
+  "settings": {
+    "number_of_replicas": 0,
+    "number_of_shards": 1
+  },
+  "mappings": {
+    "properties": {
+    "relationship": {
+      "type": "nested"
+    }
+  }
+  }
+}
+
+POST _reindex
+{
+  "source": {
+    "index": "hamlet_1"
+  },
+  "dest": {
+    "index": "hamlet_2"
+  }
+}
+GET hamlet_2/_count
+
+GET hamlet_2/_search 
+{
+  "query": {
+    "nested": {
+      "path": "relationship",
+      "query": {
+        "bool": {
+          "must": [
+            { "match": { "relationship.name": "gertrude" }},
+            { "match": { "relationship.type":  "friend" }} 
+          ]
+}}}}}
+
+# Add more documents to `hamlet_2` by running the following command
+# 添加更多文档到hamlet_2中，使用bulk命令运行
+
+POST _bulk
+{"index":{"_index":"hamlet_2", "_id":"LO"}}
+{"line_number":"1.4.1","speaker":"HAMLET","text_entry":"The air bites shrewdly; it is very cold."}
+{"index":{"_index":"hamlet_2","_id":"L1"}}
+{"line_number":"1.4.2","speaker":"HORATIO","text_entry":"It is a nipping and an eager air."}
+{"index":{"_index":"hamlet_2","_id":"L2"}}
+{"line_number":"1.4.3","speaker":"HAMLET","text_entry":"What hour now?"}
+
+
+# 002 Create the index `hamlet_3` with only one primary shard and no replicas
+# Copy the mapping of `hamlet_2` into `hamlet_3`, but also add a 
+#    join field to define a relation between a `character` (the 
+#    parent) and a `line` (the child). The name of such field is
+#    "character_or_line" 
+# Reindex `hamlet_2` to `hamlet_3`
+#创建索引hamlet_3，1主分片和0副本
+#复制hamlet_2的mapping设置到hamlet_3中，
+#添加一个连接字段在父字段character和子字段line之间，
+#该字段名称是 character_or_line
+
+
+DELETE hamlet_3
+PUT hamlet_3
+{
+  "settings": {
+    "number_of_replicas": 0,
+    "number_of_shards": 1
+  },
+  "mappings": {
+    "properties": {
+    "character_or_line": { 
+        "type": "join",
+        "relations": {
+          "character": "line" 
+        }
+      }
+  }
+  }
+}
+
+POST _reindex
+{
+  "source": {
+    "index": "hamlet_2"
+  },
+  "dest": {
+    "index": "hamlet_3"
+  }
+}
+
+
+# 003 Create a script named `init_lines` and save it into the cluster 
+#    state. The script 
+# 创建一个脚本名字是 init_lines，并且保存到集群状态中
+# 这个脚本：
+#    (i)   has a parameter named `characterId`,  
+#			有一个参数，名字是 characterId
+#    (ii)  adds the field `character_or_line` to the document,  
+#			添加字段 character_or_line 到文档中
+#    (iii) sets the value of `character_or_line.name` to "line" , 
+#			设定 character_or_line 值到 line 中
+#    (iv)  sets the value of `character_or_line.parent` to the value of the `characterId` parameter
+#			设定 character_or_line.parent 值到  characterId 参数值中
+# Update the document 
+# 更新这个文档
+# with id `C0` (i.e., the character document of Hamlet) 
+#    by adding the field `character_or_line` and setting its 
+#    `character_or_line.name` value to "character" 
+# Update the documents in `hamlet_3` that have "HAMLET" as a 
+#    `speaker`, by running the `init_lines` script with 
+#    `characterId` set to "C0"
+# ID 为 C0 （字符文档 hamlet）
+# 添加字段 character_or_line 并设定character_or_line.name的值为 character
+# 更新hamlet_3这个文档，speaker是HAMLET,通过运行脚本init_lines将 characterId设定为C0
+
+
+解题方法：
